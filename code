@@ -1,0 +1,80 @@
+import pandas as pd
+dataset_left = pd.read_csv('left_dataset.csv')
+dataset_right= pd.read_csv('right_dataset.csv')
+
+import re
+
+def preprocess_name(name):
+    name = name.strip()
+    name = re.sub(r'\b(INC|LLC|LTD)\b',' ', name)
+    return name.strip()
+    
+import math
+def preprocess_address(address):
+    if isinstance(address, float) and math.isnan(address):
+        return ""
+    return address.strip()
+
+dataset_left['name'] = dataset_left['name'].apply(preprocess_name)
+dataset_left['address'] = dataset_left['address'].apply(preprocess_address)
+dataset_right['name'] = dataset_right['name'].apply(preprocess_name)
+dataset_right['address'] = dataset_right['address'].apply(preprocess_address)
+
+dataset_left['address'] = dataset_left['address'].apply(lambda x: str(x).lower().replace(' ', '') if isinstance(x, str) else x)
+dataset_left['name'] = dataset_left['name'].apply(lambda x: str(x).lower().replace(' ', '') if isinstance(x, str) else x)
+dataset_right['address'] = dataset_right['address'].apply(lambda x: str(x).lower().replace(' ', '') if isinstance(x, str) else x)
+dataset_right['name'] = dataset_right['name'].apply(lambda x: str(x).lower().replace(' ', '') if isinstance(x, str) else x)
+
+dataset_left['address'] = dataset_left['address'].str.replace('west', 'w')
+dataset_left['address'] = dataset_left['address'].str.replace('east', 'e')
+dataset_left['address'] = dataset_left['address'].str.replace('north', 'n')
+dataset_left['address'] = dataset_left['address'].str.replace('south', 's')
+dataset_right['address'] = dataset_right['address'].str.replace('west', 'w')
+dataset_right['address'] = dataset_right['address'].str.replace('east', 'e')
+dataset_right['address'] = dataset_right['address'].str.replace('north', 'n')
+dataset_right['address'] = dataset_right['address'].str.replace('south', 's')
+
+dataset_left['city']=dataset_left['city'].str.lower()
+dataset_right['city']=dataset_right['city'].str.lower()
+dataset_left['state']=dataset_left['state'].str.lower()
+dataset_right['state']=dataset_right['state'].str.lower()
+
+dataset_right.drop(columns=['size'], inplace=True)
+dataset_left.drop(columns=['categories'], inplace=True)
+
+dataset_right['zip_code'] = dataset_right['zip_code'].astype(str).str[:5]
+dataset_left['zip_code'] = dataset_left['postal_code'].astype(str).str.split('.', expand=True)[0]
+
+dataset_right.head()
+dataset_left.head()
+
+merged_data = pd.merge(dataset_left, dataset_right, on=['zip_code', 'city','state'])
+
+merged_data.head()
+
+merged_data.drop(columns=['city','state','postal_code','zip_code'], inplace=True)
+merged_data2 = merged_data[merged_data['name_x'].str[0] == merged_data['name_y'].str[0]]
+
+merged_data2.head()
+!pip install fuzzywuzzy
+from fuzzywuzzy import fuzz
+
+# create a new column with string similarity
+merged_data2['name_similarity'] = merged_data2.apply(lambda row: fuzz.ratio(row['name_x'], row['name_y']), axis=1)
+
+merged_data2 ['address_similarity'] = merged_data2.apply(lambda row: fuzz.token_sort_ratio(row['address_x'], row['address_y']), axis=1)
+
+merged_data2['confidence_score'] = (merged_data2['name_similarity'] + merged_data2['address_similarity']) / 200
+
+merged_data2.head()
+
+merged_data2 = merged_data2[merged_data2['confidence_score'] >= 0.8]
+
+merged_data2.head()
+
+merged_data2.drop(columns=['name_x','address_x','name_y','address_y','name_similarity','address_similarity'], inplace=True)
+
+merged_data2 = merged_data2.rename(columns={'business_id': 'right_id', 'entity_id': 'left_id'})
+
+merged_data2.head()
+merged_data2.to_csv('merged_datafinal1.csv', index=False)
